@@ -19,15 +19,18 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
-    minify: 'terser',
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          router: ['react-router-dom']
+          router: ['react-router-dom'],
+          ui: ['framer-motion', 'lucide-react'],
+          utils: ['zustand', 'styled-components']
         }
       }
-    }
+    },
+    chunkSizeWarningLimit: 1000
   },
   css: {
     postcss: './postcss.config.js'
