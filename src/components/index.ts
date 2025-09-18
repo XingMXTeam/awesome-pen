@@ -1,0 +1,11 @@
+// 组件导出文件
+export { default as Header } from './Header/Header'
+export { default as Footer } from './Footer'
+export { default as Button } from './Button'
+export { default as Card } from './Card'
+export { default as BottomNavigation } from './BottomNavigation/BottomNavigation'
+export { default as WelcomeSection } from './WelcomeSection/WelcomeSection'
+export { default as UploadSection } from './UploadSection/UploadSection'
+export { default as LearningResources } from './LearningResources/LearningResources'
+export { default as CameraModal } from './Camera/CameraModal'
+export { default as Toast } from './Toast/Toast'
