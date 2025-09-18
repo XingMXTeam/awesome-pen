@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // 构建测试脚本
-const { execSync } = require('child_process');
-const fs = require('fs');
+import { execSync } from 'child_process';
+import fs from 'fs';
 
 console.log('🔍 开始构建测试...');
 
