@@ -202,24 +202,28 @@ const UploadSection: React.FC = () => {
     showToast('文本输入功能开发中...', 'warning')
   }
 
-  const handlePhotoCapture = (imageData: string) => {
+  const handlePhotoCapture = (imageData: string, publicUrl?: string) => {
     try {
       // 添加上传记录
       addUploadRecord({
         type: 'photo',
-        content: imageData,
-        status: 'pending'
+        content: publicUrl || imageData, // 优先使用公开URL
+        status: publicUrl ? 'completed' : 'pending'
       })
       
       // 减少剩余次数
       decrementRemainingCount()
       
-      showToast('照片已上传，开始AI批改...', 'success')
-      
-      // TODO: 发送到后端API进行AI批改
-      console.log('照片已上传，开始AI批改...')
+      if (publicUrl) {
+        showToast('照片上传成功，开始AI批改...', 'success')
+        console.log('图片公开URL:', publicUrl)
+        // TODO: 发送到后端API进行AI批改
+        console.log('发送到AI服务进行批改...')
+      } else {
+        showToast('照片已保存，正在上传...', 'warning')
+      }
     } catch (error) {
-      showToast('上传失败，请重试', 'error')
+      showToast('处理失败，请重试', 'error')
     }
   }
 

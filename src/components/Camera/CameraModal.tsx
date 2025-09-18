@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react'
 import styled from 'styled-components'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Camera, RotateCcw } from 'lucide-react'
+import { X, Camera, RotateCcw, Upload } from 'lucide-react'
+import { uploadImageToImgBB, generateFileName } from '@/services/uploadService'
 
 const ModalOverlay = styled(motion.div)`
   position: fixed;
@@ -150,10 +151,81 @@ const LoadingSpinner = styled.div`
   }
 `
 
+const UploadProgressContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px;
+  color: white;
+`
+
+const UploadIcon = styled.div`
+  width: 60px;
+  height: 60px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse 2s infinite;
+  
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+  }
+`
+
+const ProgressText = styled.div`
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+`
+
+const ProgressBar = styled.div`
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+`
+
+const ProgressFill = styled.div<{ $progress: number }>`
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  width: ${props => props.$progress}%;
+  transition: width 0.3s ease;
+  border-radius: 4px;
+`
+
+const ProgressPercent = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+`
+
+const RetryButton = styled.button`
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background: #dc2626;
+  }
+`
+
 interface CameraModalProps {
   isOpen: boolean
   onClose: () => void
-  onCapture: (imageData: string) => void
+  onCapture: (imageData: string, publicUrl?: string) => void
 }
 
 const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture }) => {
@@ -162,8 +234,11 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
   const streamRef = useRef<MediaStream | null>(null)
   
   const [isLoading, setIsLoading] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment')
+  const [capturedImage, setCapturedImage] = useState<string | null>(null)
 
   const startCamera = async () => {
     try {
@@ -203,7 +278,7 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
     }
   }
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (!videoRef.current || !canvasRef.current) return
 
     const video = videoRef.current
@@ -221,9 +296,61 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
 
     // 转换为base64
     const imageData = canvas.toDataURL('image/jpeg', 0.8)
+    setCapturedImage(imageData)
     
-    onCapture(imageData)
-    onClose()
+    // 开始上传
+    await uploadPhoto(imageData)
+  }
+
+  const uploadPhoto = async (imageData: string) => {
+    try {
+      setIsUploading(true)
+      setUploadProgress(0)
+      setError(null)
+
+      // 模拟上传进度
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval)
+            return prev
+          }
+          return prev + Math.random() * 20
+        })
+      }, 200)
+
+      // 生成文件名
+      const fileName = generateFileName('essay_photo')
+      
+      // 上传到ImgBB
+      const result = await uploadImageToImgBB(imageData, fileName)
+      
+      clearInterval(progressInterval)
+      setUploadProgress(100)
+
+      if (result.success && result.url) {
+        // 上传成功，调用回调函数
+        onCapture(imageData, result.url)
+        
+        // 显示成功状态
+        setTimeout(() => {
+          onClose()
+        }, 1000)
+      } else {
+        throw new Error(result.error || '上传失败')
+      }
+    } catch (error) {
+      console.error('Upload error:', error)
+      setError(error instanceof Error ? error.message : '上传失败')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const retryUpload = () => {
+    if (capturedImage) {
+      uploadPhoto(capturedImage)
+    }
   }
 
   const switchCamera = () => {
@@ -268,6 +395,17 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
             <CameraContainer>
               {isLoading ? (
                 <LoadingSpinner />
+              ) : isUploading ? (
+                <UploadProgressContainer>
+                  <UploadIcon>
+                    <Upload size={40} />
+                  </UploadIcon>
+                  <ProgressText>正在上传图片...</ProgressText>
+                  <ProgressBar>
+                    <ProgressFill $progress={uploadProgress} />
+                  </ProgressBar>
+                  <ProgressPercent>{Math.round(uploadProgress)}%</ProgressPercent>
+                </UploadProgressContainer>
               ) : (
                 <Video
                   ref={videoRef}
@@ -283,34 +421,42 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
               {error && (
                 <ErrorMessage>
                   {error}
+                  {capturedImage && (
+                    <RetryButton onClick={retryUpload}>
+                      重试上传
+                    </RetryButton>
+                  )}
                 </ErrorMessage>
               )}
 
-              <ButtonRow>
-                <ControlButton
-                  $variant="secondary"
-                  onClick={switchCamera}
-                  disabled={isLoading}
-                >
-                  <RotateCcw size={20} />
-                  切换摄像头
-                </ControlButton>
-                
-                <ControlButton
-                  $variant="primary"
-                  onClick={capturePhoto}
-                  disabled={isLoading || !!error}
-                >
-                  <Camera size={20} />
-                  拍照
-                </ControlButton>
-              </ButtonRow>
+              {!isUploading && (
+                <ButtonRow>
+                  <ControlButton
+                    $variant="secondary"
+                    onClick={switchCamera}
+                    disabled={isLoading}
+                  >
+                    <RotateCcw size={20} />
+                    切换摄像头
+                  </ControlButton>
+                  
+                  <ControlButton
+                    $variant="primary"
+                    onClick={capturePhoto}
+                    disabled={isLoading || !!error}
+                  >
+                    <Camera size={20} />
+                    拍照
+                  </ControlButton>
+                </ButtonRow>
+              )}
 
               <ControlButton
                 $variant="danger"
                 onClick={onClose}
+                disabled={isUploading}
               >
-                取消
+                {isUploading ? '上传中...' : '取消'}
               </ControlButton>
             </ControlsContainer>
           </ModalContent>
