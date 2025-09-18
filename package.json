@@ -2,9 +2,8 @@
   "name": "awesome-pen-h5",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
   "engines": {
-    "node": ">=18.0.0",
+    "node": "20.x",
     "npm": ">=8.0.0"
   },
   "scripts": {
