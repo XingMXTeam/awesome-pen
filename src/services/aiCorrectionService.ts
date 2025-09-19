@@ -95,6 +95,41 @@ export const generateUUID = (): string => {
 }
 
 /**
+ * 将图片URL转换为base64格式
+ * @param imageUrl 图片URL
+ * @returns Promise<string> base64格式的图片数据
+ */
+export const convertUrlToBase64 = async (imageUrl: string): Promise<string> => {
+  try {
+    console.log('🔄 开始转换URL为base64:', imageUrl)
+    
+    const response = await fetch(imageUrl)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const blob = await response.blob()
+    
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        console.log('✅ URL转base64成功，数据长度:', result.length)
+        resolve(result)
+      }
+      reader.onerror = () => {
+        console.error('❌ FileReader读取失败')
+        reject(new Error('FileReader读取失败'))
+      }
+      reader.readAsDataURL(blob)
+    })
+  } catch (error) {
+    console.error('❌ URL转base64失败:', error)
+    throw error instanceof Error ? error : new Error('URL转base64失败')
+  }
+}
+
+/**
  * 提交作文进行AI批改
  * @param imageUrl 图片URL
  * @param grade 年级（默认6年级）
@@ -109,6 +144,11 @@ export const submitForCorrection = async (
     console.log('📷 图片URL:', imageUrl)
     console.log('🎓 年级:', grade)
     
+    // 将URL转换为base64
+    console.log('🔄 转换图片URL为base64...')
+    const base64Data = await convertUrlToBase64(imageUrl)
+    console.log('✅ 图片已转换为base64，数据长度:', base64Data.length)
+    
     const sessionId = generateUUID()
     console.log('🆔 会话ID:', sessionId)
     
@@ -119,7 +159,7 @@ export const submitForCorrection = async (
       stream: false,
       returnRunLog: false,
       variableMap: {
-        img: [{ content: imageUrl }],
+        img: [{ content: base64Data }],
         grade: { value: grade }
       }
     }
