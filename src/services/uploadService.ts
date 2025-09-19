@@ -2,9 +2,19 @@
 const IMGBB_API_KEY = '255a9497810ddbabee244e3620bc9267'
 const IMGBB_UPLOAD_URL = 'https://api.imgbb.com/1/upload'
 
+// 导入AI批改服务
+import { submitForCorrection, CorrectionResult } from './aiCorrectionService'
+
 export interface UploadResult {
   success: boolean
   url?: string
+  error?: string
+}
+
+export interface UploadWithCorrectionResult {
+  success: boolean
+  url?: string
+  correctionResult?: CorrectionResult
   error?: string
 }
 
@@ -113,6 +123,56 @@ export const generateFileName = (prefix: string = 'essay'): string => {
   const timestamp = now.getTime()
   const dateStr = now.toISOString().split('T')[0].replace(/-/g, '')
   return `${prefix}_${dateStr}_${timestamp}.jpg`
+}
+
+/**
+ * 上传图片并进行AI批改
+ * @param base64Data base64格式的图片数据
+ * @param fileName 文件名（可选）
+ * @param grade 年级（默认6年级）
+ * @returns Promise<UploadWithCorrectionResult>
+ */
+export const uploadImageAndCorrect = async (
+  base64Data: string, 
+  fileName?: string,
+  grade: string = '6'
+): Promise<UploadWithCorrectionResult> => {
+  try {
+    console.log('🚀 开始上传图片并进行AI批改...')
+    
+    // 第一步：上传图片到ImgBB
+    console.log('📤 步骤1: 上传图片到ImgBB...')
+    const uploadResult = await uploadImageToImgBB(base64Data, fileName)
+    
+    if (!uploadResult.success || !uploadResult.url) {
+      console.error('❌ 图片上传失败:', uploadResult.error)
+      return {
+        success: false,
+        error: uploadResult.error || '图片上传失败'
+      }
+    }
+    
+    console.log('✅ 图片上传成功，URL:', uploadResult.url)
+    
+    // 第二步：调用AI批改服务
+    console.log('🤖 步骤2: 调用AI批改服务...')
+    const correctionResult = await submitForCorrection(uploadResult.url, grade)
+    
+    console.log('✅ AI批改完成')
+    
+    return {
+      success: true,
+      url: uploadResult.url,
+      correctionResult
+    }
+    
+  } catch (error) {
+    console.error('❌ 上传和批改流程错误:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '上传和批改失败'
+    }
+  }
 }
 
 /**

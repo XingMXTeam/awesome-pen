@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { CorrectionResult } from '@/services/aiCorrectionService'
 
 export interface LearningResource {
   id: string
@@ -16,6 +17,7 @@ export interface UploadRecord {
   content: string
   timestamp: number
   status: 'pending' | 'processing' | 'completed' | 'failed'
+  correctionResult?: CorrectionResult
 }
 
 export interface AppState {

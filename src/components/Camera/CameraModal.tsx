@@ -2,7 +2,8 @@ import React, { useRef, useState, useEffect } from 'react'
 import styled from 'styled-components'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Camera, RotateCcw, Upload } from 'lucide-react'
-import { uploadImageToImgBB, generateFileName } from '@/services/uploadService'
+import { uploadImageAndCorrect, generateFileName } from '@/services/uploadService'
+import { CorrectionResult } from '@/services/aiCorrectionService'
 
 const ModalOverlay = styled(motion.div)`
   position: fixed;
@@ -225,7 +226,7 @@ const RetryButton = styled.button`
 interface CameraModalProps {
   isOpen: boolean
   onClose: () => void
-  onCapture: (imageData: string, publicUrl?: string) => void
+  onCapture: (imageData: string, publicUrl?: string, correctionResult?: CorrectionResult) => void
 }
 
 const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture }) => {
@@ -235,11 +236,13 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
   
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isCorrecting, setIsCorrecting] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment')
   const [capturedImage, setCapturedImage] = useState<string | null>(null)
   const [isVideoReady, setIsVideoReady] = useState(false)
+  const [currentStep, setCurrentStep] = useState<'upload' | 'correct'>('upload')
 
   const startCamera = async () => {
     try {
@@ -392,22 +395,24 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
 
   const uploadPhoto = async (imageData: string) => {
     try {
-      console.log('📤 开始上传图片...')
+      console.log('📤 开始上传图片并进行AI批改...')
       console.log('📊 图片数据长度:', imageData.length)
       console.log('📄 图片数据前100字符:', imageData.substring(0, 100))
       
       setIsUploading(true)
+      setIsCorrecting(false)
       setUploadProgress(0)
       setError(null)
+      setCurrentStep('upload')
 
       // 模拟上传进度
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
-          if (prev >= 90) {
+          if (prev >= 45) {
             clearInterval(progressInterval)
             return prev
           }
-          return prev + Math.random() * 20
+          return prev + Math.random() * 15
         })
       }, 200)
 
@@ -415,32 +420,66 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
       const fileName = generateFileName('essay_photo')
       console.log('📝 生成文件名:', fileName)
       
-      // 上传到ImgBB
-      console.log('🌐 调用 uploadImageToImgBB...')
-      const result = await uploadImageToImgBB(imageData, fileName)
-      console.log('📤 上传结果:', result)
+      // 调用完整的上传和批改流程
+      console.log('🚀 调用 uploadImageAndCorrect...')
+      const result = await uploadImageAndCorrect(imageData, fileName, '6')
+      console.log('📤 上传和批改结果:', result)
       
       clearInterval(progressInterval)
-      setUploadProgress(100)
-
+      
       if (result.success && result.url) {
         console.log('✅ 上传成功，URL:', result.url)
-        // 上传成功，调用回调函数
-        onCapture(imageData, result.url)
         
-        // 显示成功状态
-        setTimeout(() => {
-          onClose()
-        }, 1000)
+        // 开始AI批改阶段
+        if (result.correctionResult) {
+          setCurrentStep('correct')
+          setIsUploading(false)
+          setIsCorrecting(true)
+          setUploadProgress(50)
+          
+          // 模拟AI批改进度
+          const correctionInterval = setInterval(() => {
+            setUploadProgress(prev => {
+              if (prev >= 95) {
+                clearInterval(correctionInterval)
+                return prev
+              }
+              return prev + Math.random() * 10
+            })
+          }, 300)
+          
+          // 等待一下让用户看到批改进度
+          setTimeout(() => {
+            clearInterval(correctionInterval)
+            setUploadProgress(100)
+            
+            console.log('✅ AI批改完成，结果:', result.correctionResult)
+            // 调用回调函数，传递批改结果
+            onCapture(imageData, result.url, result.correctionResult)
+            
+            // 显示成功状态
+            setTimeout(() => {
+              onClose()
+            }, 1000)
+          }, 2000)
+        } else {
+          // 没有批改结果，直接完成
+          setUploadProgress(100)
+          onCapture(imageData, result.url)
+          setTimeout(() => {
+            onClose()
+          }, 1000)
+        }
       } else {
-        console.error('❌ 上传失败:', result.error)
-        throw new Error(result.error || '上传失败')
+        console.error('❌ 上传和批改失败:', result.error)
+        throw new Error(result.error || '上传和批改失败')
       }
     } catch (error) {
-      console.error('❌ 上传错误:', error)
-      setError(error instanceof Error ? error.message : '上传失败')
+      console.error('❌ 上传和批改错误:', error)
+      setError(error instanceof Error ? error.message : '上传和批改失败')
     } finally {
       setIsUploading(false)
+      setIsCorrecting(false)
     }
   }
 
@@ -494,12 +533,14 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
             <CameraContainer>
               {isLoading ? (
                 <LoadingSpinner />
-              ) : isUploading ? (
+              ) : (isUploading || isCorrecting) ? (
                 <UploadProgressContainer>
                   <UploadIcon>
                     <Upload size={40} />
                   </UploadIcon>
-                  <ProgressText>正在上传图片...</ProgressText>
+                  <ProgressText>
+                    {currentStep === 'upload' ? '正在上传图片...' : 'AI正在批改作文...'}
+                  </ProgressText>
                   <ProgressBar>
                     <ProgressFill $progress={uploadProgress} />
                   </ProgressBar>
@@ -528,7 +569,7 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
                 </ErrorMessage>
               )}
 
-              {!isUploading && (
+              {!isUploading && !isCorrecting && (
                 <ButtonRow>
                   <ControlButton
                     $variant="secondary"
@@ -553,9 +594,9 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
               <ControlButton
                 $variant="danger"
                 onClick={onClose}
-                disabled={isUploading}
+                disabled={isUploading || isCorrecting}
               >
-                {isUploading ? '上传中...' : '取消'}
+                {(isUploading || isCorrecting) ? '处理中...' : '取消'}
               </ControlButton>
             </ControlsContainer>
           </ModalContent>

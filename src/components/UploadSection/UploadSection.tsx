@@ -1,10 +1,12 @@
 import React, { useState } from 'react'
 import styled from 'styled-components'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Zap, Camera, Keyboard } from 'lucide-react'
 import CameraModal from '../Camera/CameraModal'
 import Toast from '../Toast/Toast'
-import { useAppStore } from '@/store/appStore'
+import CorrectionResultModal from '../CorrectionResult/CorrectionResult'
+import { useAppStore, UploadRecord } from '@/store/appStore'
+import { CorrectionResult } from '@/services/aiCorrectionService'
 
 const UploadContainer = styled.section`
   padding: 24px 20px;
@@ -179,6 +181,8 @@ const TabletIllustration = styled.div`
 const UploadSection: React.FC = () => {
   const [isCameraOpen, setIsCameraOpen] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null)
+  const [showCorrectionResult, setShowCorrectionResult] = useState(false)
+  const [currentCorrectionResult, setCurrentCorrectionResult] = useState<CorrectionResult | null>(null)
   const { decrementRemainingCount, addUploadRecord, user } = useAppStore()
 
   const showToast = (message: string, type: 'success' | 'error' | 'warning') => {
@@ -202,27 +206,37 @@ const UploadSection: React.FC = () => {
     showToast('文本输入功能开发中...', 'warning')
   }
 
-  const handlePhotoCapture = (imageData: string, publicUrl?: string) => {
+  const handlePhotoCapture = (imageData: string, publicUrl?: string, correctionResult?: CorrectionResult) => {
     try {
       // 添加上传记录
-      addUploadRecord({
+      const record: Omit<UploadRecord, 'id' | 'timestamp'> = {
         type: 'photo',
         content: publicUrl || imageData, // 优先使用公开URL
-        status: publicUrl ? 'completed' : 'pending'
-      })
+        status: publicUrl ? 'completed' : 'pending',
+        ...(correctionResult && { correctionResult }) // 条件性添加批改结果
+      }
+      addUploadRecord(record)
       
       // 减少剩余次数
       decrementRemainingCount()
       
-      if (publicUrl) {
-        showToast('照片上传成功，开始AI批改...', 'success')
-        console.log('图片公开URL:', publicUrl)
-        // TODO: 发送到后端API进行AI批改
-        console.log('发送到AI服务进行批改...')
+      if (publicUrl && correctionResult) {
+        showToast('AI批改完成！点击查看详细结果', 'success')
+        console.log('✅ 完整流程完成:')
+        console.log('📷 图片URL:', publicUrl)
+        console.log('🤖 AI批改结果:', correctionResult)
+        
+        // 显示批改结果弹窗
+        setCurrentCorrectionResult(correctionResult)
+        setShowCorrectionResult(true)
+      } else if (publicUrl) {
+        showToast('照片上传成功，正在AI批改...', 'success')
+        console.log('📷 图片上传成功，URL:', publicUrl)
       } else {
         showToast('照片已保存，正在上传...', 'warning')
       }
     } catch (error) {
+      console.error('❌ 处理照片失败:', error)
       showToast('处理失败，请重试', 'error')
     }
   }
@@ -288,6 +302,18 @@ const UploadSection: React.FC = () => {
           onClose={() => setToast(null)}
         />
       )}
+
+      <AnimatePresence>
+        {showCorrectionResult && currentCorrectionResult && (
+          <CorrectionResultModal
+            result={currentCorrectionResult}
+            onClose={() => {
+              setShowCorrectionResult(false)
+              setCurrentCorrectionResult(null)
+            }}
+          />
+        )}
+      </AnimatePresence>
     </UploadContainer>
   )
 }
