@@ -13,7 +13,15 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
-    open: true
+    open: true,
+    proxy: {
+      // 代理到生产环境的 API
+      '/api': {
+        target: 'https://aistudio.alibaba-inc.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api')
+      }
+    }
   },
   build: {
     outDir: 'dist',
