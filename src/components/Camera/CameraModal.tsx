@@ -239,17 +239,20 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
   const [error, setError] = useState<string | null>(null)
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment')
   const [capturedImage, setCapturedImage] = useState<string | null>(null)
+  const [isVideoReady, setIsVideoReady] = useState(false)
 
   const startCamera = async () => {
     try {
       setIsLoading(true)
       setError(null)
+      console.log('🎥 开始启动摄像头...')
 
       // 停止之前的流
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
       }
 
+      console.log('📹 请求摄像头权限...')
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: facingMode,
@@ -258,13 +261,60 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
         }
       })
 
+      console.log('✅ 摄像头权限获取成功，流状态:', stream.active)
       streamRef.current = stream
       
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
+      // 等待下一个渲染周期，确保videoRef已经准备好
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          console.log('📺 视频流已设置到video元素')
+          setIsVideoReady(false)
+          
+          // 等待视频加载完成
+          videoRef.current.onloadedmetadata = () => {
+            console.log('📺 视频元数据加载完成，尺寸:', {
+              videoWidth: videoRef.current?.videoWidth,
+              videoHeight: videoRef.current?.videoHeight
+            })
+            setIsVideoReady(true)
+          }
+          
+          // 监听视频播放开始
+          videoRef.current.onplay = () => {
+            console.log('▶️ 视频开始播放')
+            setIsVideoReady(true)
+          }
+        } else {
+          console.error('❌ videoRef.current 仍然为空，重试...')
+          // 如果还是为空，再试一次
+          setTimeout(() => {
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream
+              console.log('📺 视频流已设置到video元素（重试成功）')
+              setIsVideoReady(false)
+              
+              videoRef.current.onloadedmetadata = () => {
+                console.log('📺 视频元数据加载完成，尺寸:', {
+                  videoWidth: videoRef.current?.videoWidth,
+                  videoHeight: videoRef.current?.videoHeight
+                })
+                setIsVideoReady(true)
+              }
+              
+              videoRef.current.onplay = () => {
+                console.log('▶️ 视频开始播放')
+                setIsVideoReady(true)
+              }
+            } else {
+              console.error('❌ videoRef.current 仍然为空，无法设置视频流')
+              setError('视频元素未准备好')
+            }
+          }, 100)
+        }
+      }, 0)
     } catch (err) {
-      console.error('Camera error:', err)
+      console.error('❌ 摄像头错误:', err)
       setError('无法访问相机，请检查权限设置')
     } finally {
       setIsLoading(false)
@@ -279,23 +329,61 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
   }
 
   const capturePhoto = async () => {
-    if (!videoRef.current || !canvasRef.current) return
+    console.log('📸 开始拍照...')
+    console.log('🎬 视频准备状态:', isVideoReady)
+    
+    if (!videoRef.current || !canvasRef.current) {
+      console.error('❌ videoRef 或 canvasRef 为空')
+      return
+    }
 
     const video = videoRef.current
     const canvas = canvasRef.current
     const context = canvas.getContext('2d')
 
-    if (!context) return
+    if (!context) {
+      console.error('❌ 无法获取canvas context')
+      return
+    }
+
+    // 检查视频是否准备好
+    if (!isVideoReady || video.videoWidth === 0 || video.videoHeight === 0) {
+      console.error('❌ 视频未准备好，状态:', {
+        isVideoReady,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        readyState: video.readyState
+      })
+      setError('视频未准备好，请稍后再试')
+      return
+    }
+
+    console.log('📺 视频尺寸:', {
+      videoWidth: video.videoWidth,
+      videoHeight: video.videoHeight,
+      readyState: video.readyState
+    })
 
     // 设置canvas尺寸
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
+    console.log('🖼️ Canvas尺寸设置为:', canvas.width, 'x', canvas.height)
 
     // 绘制视频帧到canvas
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    console.log('✅ 视频帧已绘制到canvas')
 
     // 转换为base64
     const imageData = canvas.toDataURL('image/jpeg', 0.8)
+    console.log('🔄 转换为base64，长度:', imageData.length)
+    console.log('📄 Base64前100字符:', imageData.substring(0, 100))
+    
+    if (!imageData || imageData === 'data:,') {
+      console.error('❌ Base64数据为空或无效')
+      setError('拍照失败，请重试')
+      return
+    }
+    
     setCapturedImage(imageData)
     
     // 开始上传
@@ -304,6 +392,10 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
 
   const uploadPhoto = async (imageData: string) => {
     try {
+      console.log('📤 开始上传图片...')
+      console.log('📊 图片数据长度:', imageData.length)
+      console.log('📄 图片数据前100字符:', imageData.substring(0, 100))
+      
       setIsUploading(true)
       setUploadProgress(0)
       setError(null)
@@ -321,14 +413,18 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
 
       // 生成文件名
       const fileName = generateFileName('essay_photo')
+      console.log('📝 生成文件名:', fileName)
       
       // 上传到ImgBB
+      console.log('🌐 调用 uploadImageToImgBB...')
       const result = await uploadImageToImgBB(imageData, fileName)
+      console.log('📤 上传结果:', result)
       
       clearInterval(progressInterval)
       setUploadProgress(100)
 
       if (result.success && result.url) {
+        console.log('✅ 上传成功，URL:', result.url)
         // 上传成功，调用回调函数
         onCapture(imageData, result.url)
         
@@ -337,10 +433,11 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
           onClose()
         }, 1000)
       } else {
+        console.error('❌ 上传失败:', result.error)
         throw new Error(result.error || '上传失败')
       }
     } catch (error) {
-      console.error('Upload error:', error)
+      console.error('❌ 上传错误:', error)
       setError(error instanceof Error ? error.message : '上传失败')
     } finally {
       setIsUploading(false)
@@ -354,6 +451,8 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
   }
 
   const switchCamera = () => {
+    console.log('🔄 切换摄像头...')
+    setIsVideoReady(false)
     setFacingMode(prev => prev === 'user' ? 'environment' : 'user')
   }
 
@@ -443,10 +542,10 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, onCapture })
                   <ControlButton
                     $variant="primary"
                     onClick={capturePhoto}
-                    disabled={isLoading || !!error}
+                    disabled={isLoading || !!error || !isVideoReady}
                   >
                     <Camera size={20} />
-                    拍照
+                    {!isVideoReady ? '准备中...' : '拍照'}
                   </ControlButton>
                 </ButtonRow>
               )}

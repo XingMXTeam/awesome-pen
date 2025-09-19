@@ -34,11 +34,26 @@ export const uploadImageToImgBB = async (
   fileName?: string
 ): Promise<UploadResult> => {
   try {
+    console.log('🔧 uploadImageToImgBB 开始处理...')
+    console.log('📊 原始base64数据长度:', base64Data.length)
+    console.log('📄 原始base64前100字符:', base64Data.substring(0, 100))
+    
     // 确保base64数据格式正确
     let imageData = base64Data
     if (base64Data.startsWith('data:image')) {
       // 如果包含data URL前缀，提取base64部分
       imageData = base64Data.split(',')[1]
+      console.log('✂️ 提取纯base64数据，长度:', imageData.length)
+    } else {
+      console.log('ℹ️ 数据不包含data URL前缀，直接使用')
+    }
+
+    if (!imageData || imageData.length === 0) {
+      console.error('❌ 处理后的imageData为空')
+      return {
+        success: false,
+        error: '图片数据为空'
+      }
     }
 
     const formData = new FormData()
@@ -47,32 +62,40 @@ export const uploadImageToImgBB = async (
     
     if (fileName) {
       formData.append('name', fileName)
+      console.log('📝 添加文件名到FormData:', fileName)
     }
 
+    console.log('🌐 发送请求到ImgBB...')
     const response = await fetch(IMGBB_UPLOAD_URL, {
       method: 'POST',
       body: formData
     })
 
+    console.log('📡 收到响应，状态码:', response.status)
     if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ HTTP错误响应:', errorText)
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
     const result: ImgBBResponse = await response.json()
+    console.log('📋 ImgBB响应:', result)
 
     if (result.success && result.data) {
+      console.log('✅ 上传成功，返回URL:', result.data.url)
       return {
         success: true,
         url: result.data.url
       }
     } else {
+      console.error('❌ ImgBB返回失败:', result.error)
       return {
         success: false,
         error: result.error?.message || '上传失败'
       }
     }
   } catch (error) {
-    console.error('ImgBB upload error:', error)
+    console.error('❌ ImgBB上传错误:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : '网络错误'
